@@ -12,13 +12,17 @@ The **written-answer** site for Microbiology, made for the iPad and Apple Pencil
 
 1. Pick modules, which questions (all, weak, never answered, answered but not graded), how many, and the order. Tap **Start writing**.
 2. Write each answer by hand on the ruled pad. The **Apple Pencil writes and your finger scrolls**, so resting your palm or scrolling won't leave marks. Tools: **Pen**, **Eraser** (touch a stroke to remove it), **Undo**, **Clear**. The pad grows as you near the bottom, or tap **More room**.
-3. **Hint** first tells you how many key points to cover and shows the key terms with letters blanked (like `c________`). Each hint after that reveals one key point.
+3. Each question has a **level**. Pick a starting level on setup, and switch on any question:
+   - **Easy**: the answer is printed with its key terms blanked and numbered. You write the blanks.
+   - **Medium**: each key point's opening words are printed. You finish each one.
+   - **Hard**: just how many points to cover and the first letters of the key terms.
+   - **Extreme**: a blank page.
 4. Every stroke is saved on the iPad as you write, so you can leave and **Resume** later.
 5. After the last question, tap **Finish batch**. The site makes a PDF with one page per question: the question at the top and your handwriting below.
    - Tap **Share PDF…** and pick the Claude app, or **Save PDF** and attach it in Claude.
-   - Tap **Copy grading message** and paste it into the same Claude chat. It has the grading rules, each question's answer key and the hints you used. Then send.
+   - Tap **Copy grading message** and paste it into the same Claude chat. It has the grading rules, each question's answer key, and the level and template you answered with. Then send.
 6. Claude ends its reply with an **MWB-GRADES** block. Copy the reply (or just that block), paste it into **Paste the grades back**, and tap **Save grades**.
-7. Anything below full credit goes on the **Weak list**. Open **Your answer** on any graded question to see your handwriting next to Claude's note.
+7. Every graded question stays on the **Weak list** until you get full credit on it at **Hard or Extreme**. Easy and Medium are graded only on what you wrote: Easy out of the number of blanks, Medium out of the number of key points. Open **Your answer** on any graded question to see your handwriting next to Claude's note.
 
 Your handwriting stays on the iPad (in the site's browser storage). Grades, notes, the weak list and a record of each answer sync to your Google Sheet. Use the home-screen version so Safari doesn't clear the site's storage after a few weeks without visits.
 

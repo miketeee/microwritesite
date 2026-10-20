@@ -14,8 +14,8 @@
 const SECRET = 'change-this-phrase';
 
 const ANSWERS = 'Answers', GRADES = 'Grades', SUMMARY = 'Summary';
-const A_HEAD = ['uid', 'When', 'ts', 'Device', 'Batch', 'Pos', 'Module', 'Question ID', 'Question', 'Answer', 'Hints used', 'Hints available'];
-const G_HEAD = ['uid', 'When', 'ts', 'Device', 'Batch', 'Module', 'Question ID', 'Question', 'Got', 'Of', 'Score', 'Note'];
+const A_HEAD = ['uid', 'When', 'ts', 'Device', 'Batch', 'Pos', 'Module', 'Question ID', 'Question', 'Answer', 'Hints used', 'Hints available', 'Level'];
+const G_HEAD = ['uid', 'When', 'ts', 'Device', 'Batch', 'Module', 'Question ID', 'Question', 'Got', 'Of', 'Score', 'Note', 'Level'];
 
 function doGet(e) {
   const key = e && e.parameter ? e.parameter.key : '';
@@ -38,12 +38,12 @@ function doPost(e) {
       const ts = Number(r.ts) || Date.now();
       if (r.kind === 'answer' && !haveA.has(String(r.uid))) {
         haveA.add(String(r.uid));
-        aRows.push([r.uid, new Date(ts), ts, r.device || '', r.bid || '', Number(r.pos) || 0, r.topic || '', r.id, safe_(r.q), safe_(r.text), Number(r.hints) || 0, Number(r.hintsOf) || 0]);
+        aRows.push([r.uid, new Date(ts), ts, r.device || '', r.bid || '', Number(r.pos) || 0, r.topic || '', r.id, safe_(r.q), safe_(r.text), Number(r.hints) || 0, Number(r.hintsOf) || 0, lvl_(r.lvl)]);
       }
       if (r.kind === 'grade' && !haveG.has(String(r.uid))) {
         haveG.add(String(r.uid));
         const got = Number(r.got) || 0, of = Number(r.of) || 1;
-        gRows.push([r.uid, new Date(ts), ts, r.device || '', r.bid || '', r.topic || '', r.id, safe_(r.q), got, of, Math.round(100 * got / of) / 100, safe_(r.note)]);
+        gRows.push([r.uid, new Date(ts), ts, r.device || '', r.bid || '', r.topic || '', r.id, safe_(r.q), got, of, Math.round(100 * got / of) / 100, safe_(r.note), lvl_(r.lvl)]);
       }
     });
     if (aRows.length) { const sh = tab_(ANSWERS, A_HEAD); sh.getRange(sh.getLastRow() + 1, 1, aRows.length, A_HEAD.length).setValues(aRows); }
@@ -55,6 +55,8 @@ function doPost(e) {
     lock.releaseLock();
   }
 }
+
+function lvl_(v) { v = String(v || 'extreme').toLowerCase(); return ['easy', 'medium', 'hard', 'extreme'].indexOf(v) >= 0 ? v : 'extreme'; }
 
 /* a leading = + - @ would make Sheets treat your writing as a formula */
 function safe_(s) { s = String(s == null ? '' : s); return /^[=+\-@]/.test(s) ? "'" + s : s; }
@@ -69,6 +71,8 @@ function tab_(name, head) {
     // keep your writing as plain text so Sheets never turns "3/4" into a date or "1346-1350" into a number
     (TEXT_COLS[name] || []).forEach(function (h) { const c = head.indexOf(h) + 1; sh.getRange(1, c, sh.getMaxRows(), 1).setNumberFormat('@'); });
     sh.getRange(1, 1, 1, head.length).setFontWeight('bold');
+  } else if (sh.getLastColumn() < head.length) {
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');   // older Sheet: add the new Level column header
   }
   return sh;
 }
@@ -81,14 +85,14 @@ function readAnswers_() {
   const sh = tab_(ANSWERS, A_HEAD), n = sh.getLastRow() - 1;
   if (n < 1) return [];
   return sh.getRange(2, 1, n, A_HEAD.length).getValues().map(function (r) {
-    return { uid: String(r[0]), ts: Number(r[2]), device: r[3], bid: String(r[4]), pos: Number(r[5]), id: String(r[7]), text: unsafe_(r[9]), hints: Number(r[10]), hintsOf: Number(r[11]) };
+    return { uid: String(r[0]), ts: Number(r[2]), device: r[3], bid: String(r[4]), pos: Number(r[5]), id: String(r[7]), text: unsafe_(r[9]), hints: Number(r[10]), hintsOf: Number(r[11]), lvl: lvl_(r[12]) };
   });
 }
 function readGrades_() {
   const sh = tab_(GRADES, G_HEAD), n = sh.getLastRow() - 1;
   if (n < 1) return [];
   return sh.getRange(2, 1, n, G_HEAD.length).getValues().map(function (r) {
-    return { uid: String(r[0]), ts: Number(r[2]), device: r[3], bid: String(r[4]), id: String(r[6]), got: Number(r[8]), of: Number(r[9]), note: unsafe_(r[11]) };
+    return { uid: String(r[0]), ts: Number(r[2]), device: r[3], bid: String(r[4]), id: String(r[6]), got: Number(r[8]), of: Number(r[9]), note: unsafe_(r[11]), lvl: lvl_(r[12]) };
   });
 }
 
@@ -100,16 +104,17 @@ function summary_(answers, grades) {
   const st = {};
   answers.forEach(function (a) { const s = st[a.id] || (st[a.id] = { n: 0, g: [], lastAns: 0 }); s.n++; s.lastAns = Math.max(s.lastAns, a.ts); });
   grades.forEach(function (g) { const s = st[g.id] || (st[g.id] = { n: 0, g: [], lastAns: 0 }); s.g.push(g); });
-  const rows = [['Question ID', 'Module', 'Question', 'Times answered', 'Times graded', 'Latest score', 'Best score', 'Latest note', 'Last answered']];
+  const rows = [['Question ID', 'Module', 'Question', 'Times answered', 'Times graded', 'Latest level', 'Latest score', 'Best Hard/Extreme score', 'Mastered (full credit at Hard/Extreme)', 'Latest note', 'Last answered']];
   Object.keys(st).sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); }).forEach(function (id) {
     const s = st[id], i = info[id] || {};
     s.g.sort(function (a, b) { return a.ts - b.ts; });
-    const last = s.g[s.g.length - 1], best = s.g.reduce(function (m, g) { return Math.max(m, g.got / g.of); }, 0);
-    rows.push([id, i.topic || '', i.q || '', s.n, s.g.length, last ? last.got / last.of : '', s.g.length ? best : '', last ? last.note : '', s.lastAns ? new Date(s.lastAns) : '']);
+    const last = s.g[s.g.length - 1], hard = s.g.filter(function (g) { return g.lvl === 'hard' || g.lvl === 'extreme'; });
+    const best = hard.reduce(function (m, g) { return Math.max(m, g.got / g.of); }, 0), lastHard = hard[hard.length - 1];
+    rows.push([id, i.topic || '', i.q || '', s.n, s.g.length, last ? last.lvl : '', last ? last.got / last.of : '', hard.length ? best : '', lastHard && lastHard.got >= lastHard.of ? 'yes' : 'no', last ? last.note : '', s.lastAns ? new Date(s.lastAns) : '']);
   });
   sh.clearContents();
   sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
-  if (rows.length > 1) sh.getRange(2, 6, rows.length - 1, 2).setNumberFormat('0%');
+  if (rows.length > 1) { sh.getRange(2, 7, rows.length - 1, 1).setNumberFormat('0%'); sh.getRange(2, 8, rows.length - 1, 1).setNumberFormat('0%'); }
   sh.setFrozenRows(1);
 }
 
