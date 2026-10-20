@@ -153,6 +153,18 @@ summary{cursor:pointer;font-weight:600}
 .pill{background:var(--line);color:var(--muted)}.pill.part{background:var(--warn-soft);color:var(--warn)}
 .hrow{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;padding:14px 16px}
 .hrow:hover{border-color:var(--accent)}
+/* ink pad */
+.padhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.padtools{display:flex;gap:6px;flex-wrap:wrap}
+.tool{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 14px;min-height:40px;font-weight:600;color:var(--muted)}
+.tool[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.tool:disabled{opacity:.4;cursor:default}
+.pad{position:relative;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background-color:var(--bg);
+  background-image:linear-gradient(transparent calc(100% - 1px),var(--grid-strong) calc(100% - 1px));background-repeat:repeat-y}
+.pad canvas{display:block;width:100%;touch-action:pan-y;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.pad.erasing canvas{cursor:cell}
+.inkimg{display:block;width:100%;margin-top:8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+a.btn{text-decoration:none;display:inline-flex;align-items:center}
 </style>
 </head>
 <body>
@@ -216,16 +228,28 @@ summary{cursor:pointer;font-weight:600}
     <article class="panel" style="margin-top:8px">
       <div class="qmeta"><span class="chip" id="wtopic"></span><span class="mono note" id="wnum"></span></div>
       <p class="qtext" id="wq"></p>
-      <label class="label" for="ans">Your answer</label>
-      <textarea id="ans" class="ans" rows="9" autocapitalize="sentences" spellcheck="true" placeholder="Write your answer here…"></textarea>
-      <div id="hints" class="hints" hidden></div>
+      <div id="hints" class="hints" style="margin:0 0 14px" hidden></div>
+      <div class="padhead">
+        <span class="label">Your answer</span>
+        <div class="padtools" role="toolbar" aria-label="Ink tools">
+          <button type="button" class="tool" id="penBtn" aria-pressed="true" title="Pen">Pen</button>
+          <button type="button" class="tool" id="eraseBtn" aria-pressed="false" title="Eraser: touch a stroke to remove it">Eraser</button>
+          <button type="button" class="tool" id="undoBtn" title="Undo">Undo</button>
+          <button type="button" class="tool" id="clearBtn" title="Clear this answer">Clear</button>
+        </div>
+      </div>
+      <div class="pad" id="pad"><canvas id="ink" aria-label="Handwriting area. Write with Apple Pencil."></canvas></div>
+      <div class="row" style="justify-content:space-between;margin-top:6px">
+        <span class="hint">Apple Pencil writes · finger scrolls · the page grows as you write</span>
+        <button type="button" class="btn quiet sm" id="moreBtn">More room</button>
+      </div>
       <div class="actions">
         <button class="btn quiet" id="backBtn">Back</button>
         <div class="row"><button class="btn ghost" id="hintBtn">Hint</button><button class="btn" id="nextBtn">Next</button></div>
       </div>
       <div class="row" style="justify-content:space-between;margin-top:14px">
         <button class="btn quiet sm" id="pauseBtn">Save and exit</button>
-        <span class="hint" id="whelp">Hints you use are sent with your answers so the grader can mention them.</span>
+        <span class="hint" id="whelp">Hints you use are listed for the grader.</span>
       </div>
     </article>
   </section>
@@ -240,9 +264,10 @@ summary{cursor:pointer;font-weight:600}
     </div>
     <div class="panel stack" id="gradeSteps">
       <div>
-        <h2>1. Copy for Claude</h2>
-        <p class="note" style="margin:0 0 12px">Copies one message with the grading instructions, each question, its answer key, the hints you used and your answer. Paste it into a Claude chat.</p>
-        <div class="row"><button class="btn" id="copyBtn">Copy for Claude</button><span class="note" id="copyMsg" role="status"></span></div>
+        <h2>1. Send to Claude</h2>
+        <p class="note" style="margin:0 0 12px">Your handwriting goes in a PDF (one question per page). The grading message holds the instructions, each question, its answer key and the hints you used. In a Claude chat, attach the PDF, paste the message, and send.</p>
+        <div class="row"><button class="btn" id="shareBtn" disabled>Share PDF…</button><a class="btn ghost" id="saveLink" download>Save PDF</a><button class="btn ghost" id="copyBtn">Copy grading message</button></div>
+        <p class="note" id="copyMsg" role="status" style="margin:10px 0 0"></p>
         <details id="promptBox" style="margin-top:12px"><summary>Show the text instead</summary>
           <p class="note">If copying didn't work, tap in the box, Select All, then Copy.</p>
           <textarea id="promptText" class="ans small" readonly rows="8"></textarea>
@@ -343,7 +368,7 @@ function renderSetup() {
     + `<div><b>${weakN}</b><span class="note">on weak list</span></div>`;
   const s = store.session;
   $('resumeBox').hidden = !s;
-  if (s) $('resumeText').textContent = `Question ${s.i + 1} of ${s.order.length} · ${s.order.filter(id => (s.answers[id] || {}).text).length} written · started ${when(s.started)}`;
+  if (s) $('resumeText').textContent = `Question ${s.i + 1} of ${s.order.length} · ${s.order.filter(id => ((s.answers[id] || {}).n || 0) > 0).length} written · started ${when(s.started)}`;
   const waiting = batches().filter(b => b.graded < b.items.length);
   $('awaitBox').hidden = !waiting.length;
   $('awaitList').innerHTML = waiting.map(b => `<div class="row" style="justify-content:space-between"><span><b>${when(b.ts)}</b> <span class="note">· ${b.items.length} answer${b.items.length > 1 ? 's' : ''}${b.graded ? ` · ${b.graded} graded` : ''}</span></span><button class="btn ghost sm" data-bid="${esc(b.bid)}">Grade</button></div>`).join('');
@@ -382,7 +407,7 @@ function bindDiscard() {
   $('discardBtn').onclick = () => {
     const box = $('resumeBox').querySelector('.row > .row');
     box.innerHTML = '<span class="note">Discard this batch and what you wrote?</span><button class="btn quiet sm" id="discYes">Discard</button><button class="btn sm" id="discNo">Keep</button>';
-    $('discYes').onclick = () => { store.session = null; save(); renderSetupFresh(); };
+    $('discYes').onclick = () => { const s = store.session; if (s) s.order.forEach(id => InkDB.del(inkKey(s.bid, id))); store.session = null; save(); renderSetupFresh(); };
     $('discNo').onclick = renderSetupFresh;
   };
 }
@@ -402,7 +427,8 @@ function show(view) {
   window.scrollTo(0, 0);
 }
 const cur = () => BYN[store.session.order[store.session.i]];
-const entry = id => store.session.answers[id] || (store.session.answers[id] = { text: '', hints: 0 });
+const entry = id => store.session.answers[id] || (store.session.answers[id] = { n: 0, hints: 0 });
+const wrote = id => ((store.session.answers[id] || {}).n || 0) > 0;
 function terms(q) {   // bold key terms in the answer key, for the first nudge
   const seen = new Set(), out = [];
   for (const p of q.points) {
@@ -413,6 +439,12 @@ function terms(q) {   // bold key terms in the answer key, for the first nudge
     }
   }
   return out.slice(0, 8);
+}
+function renderHints() {
+  const q = cur(), e = entry(q.id), max = q.points.length + 1;
+  $('hints').innerHTML = hintHTML(q, e.hints); $('hints').hidden = !e.hints;
+  $('hintBtn').textContent = !e.hints ? 'Hint' : e.hints >= max ? 'All hints shown' : `Next hint (${e.hints} of ${max})`;
+  $('hintBtn').disabled = e.hints >= max;
 }
 const mask = t => t.split(/\s+/).map(w => w.replace(/^([^A-Za-z0-9]*[A-Za-z0-9])(.*)$/, (_, a, b) => a + b.replace(/[A-Za-z]/g, '_').replace(/[0-9]/g, '#'))).join(' ');
 function hintHTML(q, used) {
@@ -428,27 +460,22 @@ function renderQ() {
   if (s.i >= s.order.length) s.i = s.order.length - 1;
   const q = cur(), e = entry(q.id), n = s.order.length;
   $('wcount').textContent = `Question ${s.i + 1} of ${n}`;
-  const written = s.order.filter(id => ((s.answers[id] || {}).text || '').trim()).length, pct = Math.round(100 * written / n);
-  $('wfill').style.width = pct + '%'; $('wbar').setAttribute('aria-valuenow', pct); $('wbar').title = `${written} of ${n} written`;
-  $('wsaved').textContent = `${written} of ${n} written`;
+  progress();
   $('wtopic').textContent = q.topic; $('wnum').textContent = qlabel(q);
   $('wq').textContent = q.q;
-  $('ans').value = e.text;
-  const max = q.points.length + 1;
-  $('hints').innerHTML = hintHTML(q, e.hints); $('hints').hidden = !e.hints;
-  $('hintBtn').textContent = !e.hints ? 'Hint' : e.hints >= max ? 'All hints shown' : `Next hint (${e.hints} of ${max})`;
-  $('hintBtn').disabled = e.hints >= max;
+  Pad.open(inkKey(s.bid, q.id), cnt => { if (!store.session || cur().id !== q.id) return; if (entry(q.id).n !== cnt) { entry(q.id).n = cnt; save(); } progress(); });
+  renderHints();
   $('backBtn').disabled = s.i === 0;
   $('nextBtn').textContent = s.i + 1 >= n ? 'Finish batch' : 'Next';
 }
-let typeTimer = null;
-$('ans').addEventListener('input', () => {
-  if (!store.session) return;
-  entry(cur().id).text = $('ans').value;
-  clearTimeout(typeTimer); typeTimer = setTimeout(() => { save(); const s = store.session; if (!s) return; const w = s.order.filter(id => ((s.answers[id] || {}).text || '').trim()).length; $('wsaved').textContent = `${w} of ${s.order.length} written · saved`; $('wfill').style.width = Math.round(100 * w / s.order.length) + '%'; }, 300);
-});
-function commit() { clearTimeout(typeTimer); if (store.session && !$('write').hidden) { entry(cur().id).text = $('ans').value; save(); } }
-$('hintBtn').onclick = () => { const e = entry(cur().id); e.hints = Math.min(e.hints + 1, cur().points.length + 1); commit(); renderQ(); $('hints').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+function progress() {
+  const s = store.session; if (!s) return;
+  const n = s.order.length, written = s.order.filter(wrote).length, pct = Math.round(100 * written / n);
+  $('wfill').style.width = pct + '%'; $('wbar').setAttribute('aria-valuenow', pct); $('wbar').title = `${written} of ${n} written`;
+  $('wsaved').textContent = `${written} of ${n} written`;
+}
+function commit() { if (store.session && !$('write').hidden) { Pad.close(); save(); } }
+$('hintBtn').onclick = () => { const e = entry(cur().id); e.hints = Math.min(e.hints + 1, cur().points.length + 1); save(); renderHints(); $('hints').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
 $('backBtn').onclick = () => { commit(); store.session.i--; save(); renderQ(); window.scrollTo(0, 0); };
 $('nextBtn').onclick = () => {
   commit(); const s = store.session;
@@ -461,11 +488,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) commi
 
 function finish() {
   const s = store.session, now = Date.now();
-  const blank = s.order.filter(id => !((s.answers[id] || {}).text || '').trim()).length;
+  const blank = s.order.filter(id => !wrote(id)).length;
   if (blank && !confirm(`${blank} question${blank > 1 ? 's are' : ' is'} blank. Finish anyway? Blank answers are graded as missed.`)) return;
   s.order.forEach((id, pos) => {
-    const e = s.answers[id] || { text: '', hints: 0 }, q = BYN[id];
-    const row = { uid: uid(), bid: s.bid, id, pos, text: e.text.trim(), hints: e.hints || 0, hintsOf: q.points.length + 1, ts: now + pos, device: store.sync.device };
+    const e = s.answers[id] || { n: 0, hints: 0 }, q = BYN[id];
+    const row = { uid: uid(), bid: s.bid, id, pos, text: '', ink: (e.n || 0) > 0, hints: e.hints || 0, hintsOf: q.points.length + 1, ts: now + pos, device: store.sync.device };
     store.answers.push(row); queue('answer', row);
   });
   const bid = s.bid; store.session = null; save(); flushSoon();
@@ -475,12 +502,14 @@ function finish() {
 /* ---------- the message for Claude ---------- */
 function promptFor(b) {
   const lines = [
-    `Please grade my written answers for Microbiology (Micro Write Bank, batch ${b.bid}, ${b.items.length} question${b.items.length > 1 ? 's' : ''}).`,
+    `Please grade my handwritten answers for Microbiology (Micro Write Bank, batch ${b.bid}, ${b.items.length} question${b.items.length > 1 ? 's' : ''}).`,
+    '',
+    'My answers are handwritten in the attached PDF, one question per page in the order below; each page is labeled with the question ID in brackets. The answer keys are in this message.',
     '',
     'How to grade:',
     '- Grade each answer only against its answer key, which comes from my course study guide. Don\'t require anything that isn\'t in the key.',
     '- Score = how many of the key points I covered correctly, out of the number of key points listed. Give credit when I state the idea in my own words.',
-    '- I write with an Apple Pencil, so words may be misrecognized. Don\'t take off for spelling unless the term itself is wrong or could be mistaken for a different term.',
+    '- I write by hand with an Apple Pencil. Don\'t take off for spelling or neatness unless the term itself is wrong or could be mistaken for a different term. If you can\'t read a word, say what you think it says in the note rather than marking it wrong.',
     '- If I state something incorrect, say so, even if it isn\'t in the key.',
     '- For each question, give a short note: what I got right, and exactly what was missing or wrong.',
     '- Hints used are listed. Mention it when I needed hints, but don\'t lower the score for them. A blank answer scores 0.',
@@ -495,14 +524,15 @@ function promptFor(b) {
     const q = BYN[a.id]; if (!q) return;
     lines.push('', '---', `[${q.id}] ${q.topic} · Q${q.n}`, `Question: ${q.q}`, `Answer key (${q.points.length} point${q.points.length > 1 ? 's' : ''}):`);
     q.points.forEach((p, i) => lines.push(`${i + 1}. ${plain(p)}`));
-    lines.push(`Hints used: ${a.hints} of ${a.hintsOf}${a.hints > 1 ? ` (saw key point${a.hints > 2 ? 's' : ''} 1${a.hints > 2 ? '–' + (a.hints - 1) : ''})` : ''}`, 'My answer:', a.text || '(left blank)');
+    lines.push(`Hints used: ${a.hints} of ${a.hintsOf}${a.hints > 1 ? ` (saw key point${a.hints > 2 ? 's' : ''} 1${a.hints > 2 ? '–' + (a.hints - 1) : ''})` : ''}`, a.ink || a.text ? `My answer: handwritten on the PDF page labeled [${q.id}]` : 'My answer: (left blank)');
   });
   return lines.join('\n');
 }
 
 /* ---------- batch view ---------- */
 let openBid = null;
-function openBatch(bid) { openBid = bid; $('gradeIn').value = ''; $('gradeMsg').textContent = ''; $('copyMsg').textContent = ''; $('promptBox').open = false; renderBatch(); for (const v of ['setup', 'write', 'batch', 'weak', 'history']) $(v).hidden = v !== 'batch'; window.scrollTo(0, 0); }
+let pdfFile = null, pdfUrl = null;
+function openBatch(bid) { openBid = bid; $('gradeIn').value = ''; $('gradeMsg').textContent = ''; $('copyMsg').textContent = ''; $('promptBox').open = false; renderBatch(); buildPDF(bid); for (const v of ['setup', 'write', 'batch', 'weak', 'history']) $(v).hidden = v !== 'batch'; window.scrollTo(0, 0); }
 function renderBatch() {
   const b = batches().find(x => x.bid === openBid); if (!b) return show('setup');
   const n = b.items.length, gs = b.items.map(a => b.grades[a.id]).filter(Boolean);
@@ -517,6 +547,38 @@ function renderBatch() {
   const missed = b.items.filter(a => b.grades[a.id] && b.grades[a.id].got < b.grades[a.id].of);
   $('bRetry').hidden = !missed.length; $('bRetry').onclick = () => begin(missed.map(a => a.id));
 }
+async function buildPDF(bid) {
+  const b = batches().find(x => x.bid === bid); if (!b) return;
+  $('shareBtn').disabled = true; $('shareBtn').textContent = 'Making PDF…'; $('saveLink').removeAttribute('href');
+  const inks = {};
+  for (const a of b.items) { const d = await InkDB.get(inkKey(b.bid, a.id)); if (d) inks[a.id] = d; }
+  if (openBid !== bid) return;
+  const blob = makePDF(renderPages(b, inks));
+  const name = `micro-write-${new Date(b.ts).toISOString().slice(0, 16).replace(/[T:]/g, '-')}.pdf`;
+  pdfFile = new File([blob], name, { type: 'application/pdf' });
+  if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+  pdfUrl = URL.createObjectURL(blob);
+  $('saveLink').href = pdfUrl; $('saveLink').download = name;
+  const canShare = !!(navigator.canShare && navigator.canShare({ files: [pdfFile] }));
+  $('shareBtn').hidden = !canShare; $('shareBtn').disabled = false; $('shareBtn').textContent = 'Share PDF…';
+  $('copyMsg').textContent = `PDF ready: ${b.items.length} question${b.items.length > 1 ? 's' : ''}, ${(blob.size / 1024 / 1024).toFixed(1)} MB.` + (canShare ? ' Share it to the Claude app (or save it), then copy the grading message.' : ' Save it, then copy the grading message.');
+}
+$('shareBtn').onclick = async () => {
+  if (!pdfFile) return;
+  try { await navigator.share({ files: [pdfFile], title: 'Micro Write Bank answers' }); $('copyMsg').textContent = 'Shared. Now tap Copy grading message and paste it in the same Claude chat.'; }
+  catch (e) { if (e.name !== 'AbortError') $('copyMsg').textContent = 'Sharing didn\'t work here. Use Save PDF and attach it in Claude instead.'; }
+};
+document.addEventListener('toggle', async e => {   // show your handwriting when you open "Your answer"
+  const d = e.target; if (!d.classList || !d.classList.contains('yours') || !d.open || d.dataset.done) return;
+  d.dataset.done = '1'; const box = d.querySelector('.mine');
+  if (d.dataset.blank) { box.innerHTML = '<p class="note"><i>(left blank)</i></p>'; return; }
+  const ink = await InkDB.get(d.dataset.key);
+  if (!ink || !ink.strokes || !ink.strokes.length) { box.innerHTML = '<p class="note"><i>Handwriting is saved on the device you wrote it on.</i></p>'; return; }
+  const s = 0.75, h = Math.ceil((inkBottom(ink.strokes) + 30) * s), c = document.createElement('canvas');
+  c.width = INK_W * s; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, h);
+  drawInk(x, ink.strokes, s, '#111');
+  const img = new Image(); img.className = 'inkimg'; img.alt = 'Your handwritten answer'; img.src = c.toDataURL('image/png'); box.replaceChildren(img);
+}, true);
 function scorePill(g) {
   if (!g) return '<span class="pill">not graded</span>';
   const cls = g.got >= g.of ? 'ok' : g.got === 0 ? 'bad' : 'part';
@@ -527,12 +589,12 @@ function card(q, a, g) {
   return `<div class="panel qcard"><div class="qmeta"><span class="chip">${esc(q.topic)}</span><span class="mono note">${qlabel(q)}</span>${scorePill(g)}${a && a.hints ? `<span class="note">${a.hints} hint${a.hints > 1 ? 's' : ''}</span>` : ''}</div>
     <p class="qtext sm">${esc(q.q)}</p>
     ${g && g.note ? `<p class="gnote">${esc(g.note)}</p>` : ''}
-    ${a ? `<details><summary>Your answer</summary><p class="mine">${a.text ? esc(a.text) : '<i class="note">(left blank)</i>'}</p></details>` : ''}
+    ${a ? `<details class="yours" data-key="${esc(inkKey(a.bid, a.id))}" data-blank="${a.ink || a.text ? '' : '1'}"><summary>Your answer</summary><div class="mine"></div></details>` : ''}
     <details><summary>Answer key</summary><ol class="keypts">${q.points.map(p => `<li>${p}</li>`).join('')}</ol></details></div>`;
 }
 $('copyBtn').onclick = async () => {
   const t = $('promptText').value;
-  try { await navigator.clipboard.writeText(t); $('copyMsg').textContent = 'Copied. Paste it into a Claude chat.'; }
+  try { await navigator.clipboard.writeText(t); $('copyMsg').textContent = 'Grading message copied. Paste it into the Claude chat with the PDF attached, then send.'; }
   catch (e) { $('promptBox').open = true; $('promptText').focus(); $('promptText').select(); $('copyMsg').textContent = 'Couldn\'t copy automatically. The text is selected below; use Copy.'; }
 };
 function parseGrades(text) {
@@ -608,11 +670,13 @@ const connected = () => !!(store.sync.url && store.sync.key);
 function queue(kind, row) {
   if (!connected()) return;
   const q = BYN[row.id];
-  store.pending.push(Object.assign({ kind, topic: q ? q.topic : '', q: q ? q.q : '' }, row));
+  const r = Object.assign({ kind, topic: q ? q.topic : '', q: q ? q.q : '' }, row);
+  if (kind === 'answer' && row.ink) r.text = '(handwritten, in the PDF on ' + (row.device === store.sync.device ? 'this iPad' : 'the device it was written on') + ')';
+  store.pending.push(r);
 }
 function merge(d) {   // add rows other devices sent; uid keeps everything unique
   const haveA = new Set(store.answers.map(a => a.uid)), haveG = new Set(store.gradeRows.map(g => g.uid));
-  for (const a of d.answers || []) if (a.uid && !haveA.has(a.uid) && BYN[a.id]) { store.answers.push({ uid: a.uid, bid: a.bid, id: a.id, pos: +a.pos || 0, text: a.text || '', hints: +a.hints || 0, hintsOf: +a.hintsOf || BYN[a.id].points.length + 1, ts: +a.ts, device: a.device }); haveA.add(a.uid); }
+  for (const a of d.answers || []) if (a.uid && !haveA.has(a.uid) && BYN[a.id]) { const hw = /^\(handwritten/.test(a.text || ''); store.answers.push({ uid: a.uid, bid: a.bid, id: a.id, pos: +a.pos || 0, text: hw ? '' : a.text || '', ink: hw || undefined, hasInk: hw, hints: +a.hints || 0, hintsOf: +a.hintsOf || BYN[a.id].points.length + 1, ts: +a.ts, device: a.device }); haveA.add(a.uid); }
   for (const g of d.grades || []) if (g.uid && !haveG.has(g.uid) && BYN[g.id]) { store.gradeRows.push({ uid: g.uid, bid: g.bid, id: g.id, got: +g.got, of: +g.of, note: g.note || '', ts: +g.ts, device: g.device }); haveG.add(g.uid); }
 }
 function setSync(state, text) { $('syncDot').className = 'dot ' + state; $('syncText').textContent = text; }
@@ -684,6 +748,190 @@ setInterval(() => { if (store.pending.length) flush(); }, 60000);
 $('bankline').textContent = `Microbiology · Modules 1–17 · ${BANK.length} study-guide questions`;
 show('setup');
 syncLabel(); flush();
+
+/* ---------- handwriting storage (IndexedDB; falls back to memory if the browser blocks it) ----------
+   Each answer is kept under "<batch id>|<question id>" as { w: 1000, h, strokes: [{ pts: [[x, y, pressure], …] }] },
+   in a fixed 1000-unit-wide space so it redraws correctly at any screen width or orientation. */
+const InkDB = (() => {
+  const mem = new Map(); let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    try { const r = indexedDB.open('micro-write-ink', 1); r.onupgradeneeded = () => r.result.createObjectStore('ink'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }
+    catch (e) { rej(e); }
+  }));
+  const run = (mode, fn) => open().then(db => new Promise((res, rej) => {
+    const t = db.transaction('ink', mode), req = fn(t.objectStore('ink'));
+    t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error);
+  }));
+  return {
+    get: k => run('readonly', s => s.get(k)).catch(() => mem.get(k)),
+    put: (k, v) => run('readwrite', s => s.put(v, k)).catch(() => { mem.set(k, v); }),
+    del: k => run('readwrite', s => s.delete(k)).catch(() => { mem.delete(k); })
+  };
+})();
+const inkKey = (bid, id) => bid + '|' + id;
+const INK_W = 1000, INK_H0 = 760, INK_GROW = 420;
+
+/* draw strokes onto a 2D context; scale = output pixels per ink unit */
+function drawInk(ctx, strokes, scale, color, oy = 0) {
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = color; ctx.fillStyle = color;
+  for (const st of strokes) {
+    const p = st.pts; if (!p.length) continue;
+    if (p.length === 1) { ctx.beginPath(); ctx.arc(p[0][0] * scale, (p[0][1] - oy) * scale, 1.6 * scale, 0, 7); ctx.fill(); continue; }
+    for (let i = 1; i < p.length; i++) {
+      const a = p[i - 1], b = p[i], pr = ((a[2] + b[2]) / 2) / 100;
+      ctx.lineWidth = Math.max(1, (2 + 3.2 * pr) * scale);
+      ctx.beginPath();
+      if (i > 1) { const z = p[i - 2]; ctx.moveTo(((z[0] + a[0]) / 2) * scale, ((z[1] + a[1]) / 2 - oy) * scale); ctx.quadraticCurveTo(a[0] * scale, (a[1] - oy) * scale, ((a[0] + b[0]) / 2) * scale, ((a[1] + b[1]) / 2 - oy) * scale); }
+      else { ctx.moveTo(a[0] * scale, (a[1] - oy) * scale); ctx.lineTo(((a[0] + b[0]) / 2) * scale, ((a[1] + b[1]) / 2 - oy) * scale); }
+      ctx.stroke();
+    }
+    const l = p[p.length - 1], m = p[p.length - 2];
+    ctx.beginPath(); ctx.moveTo(((m[0] + l[0]) / 2) * scale, ((m[1] + l[1]) / 2 - oy) * scale); ctx.lineTo(l[0] * scale, (l[1] - oy) * scale); ctx.stroke();
+  }
+}
+const inkBottom = strokes => strokes.reduce((m, s) => s.pts.reduce((mm, p) => Math.max(mm, p[1]), m), 0);
+
+/* ---------- the writing pad ---------- */
+const Pad = (() => {
+  const cv = $('ink'), pad = $('pad'), ctx = cv.getContext('2d');
+  let doc = { w: INK_W, h: INK_H0, strokes: [] }, key = null, undo = [], mode = 'pen', live = null, dirty = false, saveT = null, token = 0, onChange = () => {};
+  const scale = () => cv.clientWidth / INK_W;
+  const inkColor = () => getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#20261F';
+  function size() {
+    const s = scale(), dpr = window.devicePixelRatio || 1, cssH = Math.round(doc.h * s);
+    cv.style.height = cssH + 'px';
+    cv.width = Math.round(cv.clientWidth * dpr); cv.height = Math.round(cssH * dpr);
+    pad.style.backgroundSize = `100% ${Math.round(56 * s)}px`;
+    redraw();
+  }
+  function redraw() {
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawInk(ctx, live && live.pts ? doc.strokes.concat([live]) : doc.strokes, scale(), inkColor());
+    $('undoBtn').disabled = !undo.length; $('clearBtn').disabled = !doc.strokes.length;
+  }
+  function persist(now) {
+    dirty = true; clearTimeout(saveT);
+    const go = () => { if (!dirty || !key) return; dirty = false; InkDB.put(key, { w: doc.w, h: doc.h, strokes: doc.strokes }); };
+    if (now) go(); else saveT = setTimeout(go, 250);
+    onChange(doc.strokes.length);
+  }
+  function snapshot() { undo.push(doc.strokes.slice()); if (undo.length > 60) undo.shift(); }
+  const pt = e => { const r = cv.getBoundingClientRect(), s = scale(); return [Math.round((e.clientX - r.left) / s * 10) / 10, Math.round((e.clientY - r.top) / s * 10) / 10, Math.round((e.pointerType === 'mouse' ? 0.5 : (e.pressure || 0.5)) * 100)]; };
+  function eraseAt(p) {
+    const r = 16, before = doc.strokes.length;
+    doc.strokes = doc.strokes.filter(st => !st.pts.some(q => Math.abs(q[0] - p[0]) < r && Math.abs(q[1] - p[1]) < r));
+    if (doc.strokes.length !== before) redraw();
+  }
+  // Apple Pencil arrives as touchType "stylus": stop it from scrolling the page so it can write. Fingers still scroll.
+  const stylusOnly = e => { for (const t of e.changedTouches || []) if (t.touchType === 'stylus') { e.preventDefault(); return; } };
+  cv.addEventListener('touchstart', stylusOnly, { passive: false });
+  cv.addEventListener('touchmove', stylusOnly, { passive: false });
+  cv.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch' || !key) return;   // finger: leave it to scrolling
+    e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+    const p = pt(e);
+    if (mode === 'erase') { snapshot(); live = { erase: true }; eraseAt(p); return; }
+    live = { pts: [p] }; redraw();
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!live || e.pointerType === 'touch') return;
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of evs.length ? evs : [e]) {
+      const p = pt(ev);
+      if (live.erase) { eraseAt(p); continue; }
+      const l = live.pts[live.pts.length - 1];
+      if (Math.abs(p[0] - l[0]) + Math.abs(p[1] - l[1]) >= 0.8) live.pts.push(p);
+    }
+    if (!live.erase) redraw();
+  });
+  const end = e => {
+    if (!live) return;
+    if (live.erase) { live = null; if (undo.length && undo[undo.length - 1].length === doc.strokes.length) undo.pop(); redraw(); persist(true); return; }
+    snapshot(); doc.strokes.push(live); live = null;
+    if (inkBottom(doc.strokes) > doc.h - 140) { doc.h += INK_GROW; size(); } else redraw();
+    persist();
+  };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  function setMode(m) { mode = m; $('penBtn').setAttribute('aria-pressed', m === 'pen'); $('eraseBtn').setAttribute('aria-pressed', m === 'erase'); pad.classList.toggle('erasing', m === 'erase'); }
+  $('penBtn').onclick = () => setMode('pen');
+  $('eraseBtn').onclick = () => setMode('erase');
+  $('undoBtn').onclick = () => { if (!undo.length) return; doc.strokes = undo.pop(); redraw(); persist(true); };
+  $('clearBtn').onclick = () => { if (!doc.strokes.length || !confirm('Clear everything you wrote for this question?')) return; snapshot(); doc.strokes = []; doc.h = INK_H0; size(); persist(true); };
+  $('moreBtn').onclick = () => { doc.h += INK_GROW; size(); persist(true); };
+  let rw = 0; new ResizeObserver(() => { if (cv.clientWidth && cv.clientWidth !== rw) { rw = cv.clientWidth; size(); } }).observe(pad);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+  return {
+    async open(k, change) {
+      flush(); key = k; onChange = change || (() => {}); undo = []; live = null; setMode('pen');
+      const my = ++token; doc = { w: INK_W, h: INK_H0, strokes: [] }; size();
+      const d = await InkDB.get(k);
+      if (my !== token) return;
+      if (d && d.strokes) { doc = { w: INK_W, h: Math.max(INK_H0, d.h || INK_H0), strokes: d.strokes }; size(); }
+      onChange(doc.strokes.length);
+    },
+    close() { flush(); key = null; },
+    count: () => doc.strokes.length
+  };
+  function flush() { clearTimeout(saveT); if (dirty && key) { dirty = false; InkDB.put(key, { w: doc.w, h: doc.h, strokes: doc.strokes }); } }
+})();
+
+/* ---------- PDF: one page image per question (question text + your ink), no outside libraries ---------- */
+const PDFW = 1275, PDFH = 1650, PM = 80;   // letter size at 150 dpi
+function wrapText(ctx, text, maxW) {
+  const out = []; let line = '';
+  for (const w of String(text).split(/\s+/)) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; }
+  if (line) out.push(line); return out;
+}
+function renderPages(b, inks) {   // -> array of canvases
+  const pages = [], font = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+  const newPage = () => { const c = document.createElement('canvas'); c.width = PDFW; c.height = PDFH; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, PDFW, PDFH); pages.push(c); return x; };
+  b.items.forEach((a, k) => {
+    const q = BYN[a.id]; if (!q) return;
+    const ink = inks[a.id], strokes = ink && ink.strokes ? ink.strokes : [];
+    let x = newPage(), y = PM;
+    x.fillStyle = '#666'; x.font = `22px ${font}`; x.fillText(`Micro Write Bank · ${when(b.ts)} · question ${k + 1} of ${b.items.length}`, PM, y); y += 46;
+    x.fillStyle = '#5B3A73'; x.font = `bold 30px ${font}`; x.fillText(`[${q.id}]  ${q.topic} · Q${q.n}`, PM, y); y += 48;
+    x.fillStyle = '#111'; x.font = `bold 32px ${font}`;
+    for (const l of wrapText(x, q.q, PDFW - 2 * PM)) { x.fillText(l, PM, y); y += 42; }
+    x.fillStyle = '#666'; x.font = `22px ${font}`; x.fillText(`Hints used: ${a.hints} of ${a.hintsOf}`, PM, y + 4); y += 30;
+    x.strokeStyle = '#bbb'; x.lineWidth = 2; x.beginPath(); x.moveTo(PM, y); x.lineTo(PDFW - PM, y); x.stroke(); y += 24;
+    if (!strokes.length) { x.fillStyle = '#999'; x.font = `italic 30px ${font}`; x.fillText(ink === undefined && a.hasInk ? '(handwriting is on another device)' : '(left blank)', PM, y + 30); return; }
+    const s = (PDFW - 2 * PM) / INK_W, bottom = inkBottom(strokes) + 30;
+    let from = 0;
+    while (from < bottom) {
+      const room = (PDFH - PM - y) / s, to = Math.min(bottom, from + room);
+      x.save(); x.beginPath(); x.rect(PM, y, PDFW - 2 * PM, (to - from) * s); x.clip(); x.translate(PM, y);
+      drawInk(x, strokes, s, '#111', from); x.restore();
+      from = to;
+      if (from < bottom) { x = newPage(); y = PM; x.fillStyle = '#666'; x.font = `22px ${font}`; x.fillText(`[${q.id}] continued`, PM, y); y += 30; }
+    }
+  });
+  return pages;
+}
+function dataUrlBytes(u) { const s = atob(u.split(',')[1]), a = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+function makePDF(canvases) {
+  const enc = new TextEncoder(), parts = [], offs = []; let len = 0;
+  const push = v => { const b = typeof v === 'string' ? enc.encode(v) : v; parts.push(b); len += b.length; };
+  const n = canvases.length, total = 3 + 3 * n;
+  push('%PDF-1.4\n%âãÏÓ\n');
+  const obj = (id, f) => { offs[id] = len; push(`${id} 0 obj\n`); f(); push('\nendobj\n'); };
+  obj(1, () => push('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => push(`<< /Type /Pages /Count ${n} /Kids [${canvases.map((_, i) => `${3 + 3 * i} 0 R`).join(' ')}] >>`));
+  canvases.forEach((c, i) => {
+    const pg = 3 + 3 * i, cs = pg + 1, im = pg + 2, jpg = dataUrlBytes(c.toDataURL('image/jpeg', 0.82));
+    const content = 'q 612 0 0 792 0 0 cm /Im0 Do Q';
+    obj(pg, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 ${im} 0 R >> >> /Contents ${cs} 0 R >>`));
+    obj(cs, () => push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`));
+    obj(im, () => { push(`<< /Type /XObject /Subtype /Image /Width ${c.width} /Height ${c.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); push(jpg); push('\nendstream'); });
+  });
+  const xref = len;
+  let x = `xref\n0 ${total}\n0000000000 65535 f \n`;
+  for (let i = 1; i < total; i++) x += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+  push(x + `trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(parts, { type: 'application/pdf' });
+}
 </script>
 </body>
 </html>

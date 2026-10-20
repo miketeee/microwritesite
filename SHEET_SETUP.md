@@ -13,7 +13,7 @@ Same setup as your other practice sites, with its **own new Sheet**, so written 
 6. Open Micro Write Bank on your iPad → tap **Google Sheet: not connected** → paste the URL and your secret phrase → **Connect and sync**. Do the same on any other device you use.
 
 What you'll see in the Sheet:
-- **Answers**: one row per written answer (when, device, batch, module, question, what you wrote, hints used). Nothing is ever deleted.
+- **Answers**: one row per answer (when, device, batch, module, question, whether it was handwritten or left blank, hints used). The handwriting itself stays on the iPad. Nothing is ever deleted.
 - **Grades**: one row per grade you paste back (key points got / out of, score, Claude's note). Nothing is ever deleted.
 - **Summary**: one row per question: times answered, times graded, latest score, best score, latest note. Rebuilt after every sync.
 

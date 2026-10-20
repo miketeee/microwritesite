@@ -11,10 +11,16 @@ The **written-answer** site for Microbiology, made for the iPad and Apple Pencil
 ## How it works
 
 1. Pick modules, which questions (all, weak, never answered, answered but not graded), how many, and the order. Tap **Start writing**.
-2. Write each answer in the box with the Apple Pencil. iPadOS Scribble turns your handwriting into text. **Hint** first tells you how many key points to cover and gives masked key terms (like `Y_______ p_____`). Each hint after that reveals one key point. Everything saves as you write, so you can leave and **Resume** later.
-3. After the last question, tap **Finish batch**, then **Copy for Claude** and paste into a Claude chat. Claude grades each answer against your study-guide answer key, with notes on what was missing or wrong.
-4. Claude ends its reply with an **MWB-GRADES** block. Copy the reply (or just that block), paste it into **Paste the grades back**, and tap **Save grades**.
-5. Anything below full credit goes on the **Weak list**. Practice it from there, or pick "Weak" when you set up a batch.
+2. Write each answer by hand on the ruled pad. The **Apple Pencil writes and your finger scrolls**, so resting your palm or scrolling won't leave marks. Tools: **Pen**, **Eraser** (touch a stroke to remove it), **Undo**, **Clear**. The pad grows as you near the bottom, or tap **More room**.
+3. **Hint** first tells you how many key points to cover and shows the key terms with letters blanked (like `c________`). Each hint after that reveals one key point.
+4. Every stroke is saved on the iPad as you write, so you can leave and **Resume** later.
+5. After the last question, tap **Finish batch**. The site makes a PDF with one page per question: the question at the top and your handwriting below.
+   - Tap **Share PDF…** and pick the Claude app, or **Save PDF** and attach it in Claude.
+   - Tap **Copy grading message** and paste it into the same Claude chat. It has the grading rules, each question's answer key and the hints you used. Then send.
+6. Claude ends its reply with an **MWB-GRADES** block. Copy the reply (or just that block), paste it into **Paste the grades back**, and tap **Save grades**.
+7. Anything below full credit goes on the **Weak list**. Open **Your answer** on any graded question to see your handwriting next to Claude's note.
+
+Your handwriting stays on the iPad (in the site's browser storage). Grades, notes, the weak list and a record of each answer sync to your Google Sheet. Use the home-screen version so Safari doesn't clear the site's storage after a few weeks without visits.
 
 Questions and answer keys come from the Study Guide Q&A pages for Modules 1–17 (334 questions).
 
