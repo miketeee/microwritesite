@@ -170,6 +170,12 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .lvlseg button{min-height:38px;padding:6px 16px}
 .lvl{font:600 .7rem/1 var(--body);letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:4px;border:1px solid var(--line);color:var(--muted)}
 .lvl.easy{color:var(--good);border-color:var(--good)}.lvl.medium{color:var(--accent);border-color:var(--accent)}.lvl.hard{color:var(--warn);border-color:var(--warn)}.lvl.extreme{color:var(--bad);border-color:var(--bad)}
+
+/* walkthrough links */
+.walkhint{margin:-6px 0 14px}
+.wlink{color:var(--accent);font-weight:600}
+.qcard .wlink{font-size:.85rem;font-weight:500}
+#fromWalk{border-left:4px solid var(--accent)}
 </style>
 </head>
 <body>
@@ -234,6 +240,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
     <article class="panel" style="margin-top:8px">
       <div class="qmeta"><span class="chip" id="wtopic"></span><span class="mono note" id="wnum"></span></div>
       <p class="qtext" id="wq"></p>
+      <p class="hint walkhint" id="wWalk" hidden>Stuck? <a class="wlink" id="wWalkA" href="#" target="_blank" rel="noopener">Open the walkthrough</a>, then come back and try it at a harder level later.</p>
       <div class="lvlrow"><span class="label">Level</span><div class="seg lvlseg" id="wLevel" role="group" aria-label="Difficulty for this question"></div></div>
       <div class="padhead">
         <span class="label">Your answer</span>
@@ -447,6 +454,9 @@ const plain = h => { const d = document.createElement('div'); d.innerHTML = h; r
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const when = t => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const qlabel = q => `Mod ${q.m} · Q${q.n}`;
+/* Modules 9–17 have step-by-step walkthroughs on the Micro Quiz Bank site */
+const WALK_BASE = 'https://miketeee.github.io/micromodules/walkthrough/index.html#';
+const walkURL = q => q && q.m >= 9 ? WALK_BASE + encodeURIComponent(q.id) : null;
 
 /* ---------- storage (checkpoint after every change) ---------- */
 let store = null;
@@ -592,6 +602,7 @@ function renderQ() {
   progress();
   $('wtopic').textContent = q.topic; $('wnum').textContent = qlabel(q);
   $('wq').textContent = q.q;
+  const wu = walkURL(q); $('wWalk').hidden = !wu; if (wu) $('wWalkA').href = wu;
   Pad.open(inkKey(s.bid, q.id), cnt => { if (!store.session || cur().id !== q.id) return; if (entry(q.id).n !== cnt) { entry(q.id).n = cnt; save(); } progress(); }, layoutTemplate(q, e.lvl));
   renderLevel();
   $('backBtn').disabled = s.i === 0;
@@ -738,7 +749,8 @@ function card(q, a, g) {
     <p class="qtext sm">${esc(q.q)}</p>
     ${g && g.note ? `<p class="gnote">${esc(g.note)}</p>` : ''}
     ${a ? `<details class="yours" data-key="${esc(inkKey(a.bid, a.id))}" data-blank="${a.ink || a.text ? '' : '1'}"><summary>Your answer</summary><div class="mine"></div></details>` : ''}
-    <details><summary>Answer key</summary><ol class="keypts">${q.points.map(p => `<li>${p}</li>`).join('')}</ol></details></div>`;
+    <details><summary>Answer key</summary><ol class="keypts">${q.points.map(p => `<li>${p}</li>`).join('')}</ol></details>
+    ${walkURL(q) ? `<p style="margin:10px 0 0"><a class="wlink" href="${walkURL(q)}" target="_blank" rel="noopener">Open the walkthrough</a></p>` : ''}</div>`;
 }
 $('copyBtn').onclick = async () => {
   const t = $('promptText').value;
@@ -897,6 +909,19 @@ setInterval(() => { if (store.pending.length) flush(); }, 60000);
 
 $('bankline').textContent = `Microbiology · Modules 1–17 · ${BANK.length} study-guide questions`;
 show('setup');
+/* "Write it out" from a walkthrough opens ?q=<question id>: add it to the batch in progress (nothing is lost),
+   or start a one-question batch at your starting level. */
+setTimeout(function fromWalkthrough() {   // after the whole script (including the ink pad) has loaded
+  const ids = (new URLSearchParams(location.search).get('q') || '').split(',').map(x => x.trim()).filter(id => BYN[id]);
+  if (!ids.length) return;
+  history.replaceState(null, '', location.pathname);
+  const s = store.session;
+  if (s) {
+    for (const id of ids) if (!s.order.includes(id)) s.order.push(id);
+    s.i = s.order.indexOf(ids[0]); save();
+  } else begin(ids);
+  show('write');
+}, 0);
 syncLabel(); flush();
 
 /* ---------- handwriting storage (IndexedDB; falls back to memory if the browser blocks it) ----------
